@@ -6,6 +6,7 @@ const cameraBtn = document.getElementById('camera');
 const camerasSelect = document.getElementById('cameras');
 
 const call = document.getElementById('call');
+const callForm = call.querySelector('form');
 
 call.hidden = true;
 
@@ -14,6 +15,7 @@ let muted = false;
 let cameraOff = false;
 let roomName;
 let myPeerConnection;
+let myDataChannel;
 
 async function getCaemeras() {
 try {
@@ -109,40 +111,65 @@ async function initCall() {
 async function  handleWelcomeSubmit(event)  {
   event.preventDefault();
   const input = welcomeForm.querySelector('input');
+  const h4 = welcome.querySelector('h4')
   await initCall();
   socket.emit('join_room', input.value);
   roomName = input.value;
   input.value = '';
+  h4.innerText = '';
+}
+
+function handleSendText(event) {
+  event.preventDefault();
+  const input = callForm.querySelector('input');
+  const ul = document.getElementById('myChannel')
+  const li = document.createElement("li");
+  li.innerText = `me: ${input.value}`;
+  myDataChannel.send(input.value);
+  ul.appendChild(li);
+  input.value = ''
 }
 
 welcomeForm.addEventListener('submit', handleWelcomeSubmit);
+callForm.addEventListener('submit', handleSendText);
 
 // socket code
 socket.on('welcome', async ()=>{
+  myDataChannel = myPeerConnection.createDataChannel('chat');
+  myDataChannel.addEventListener('message', handleChannel)
   const offer = await myPeerConnection.createOffer();
   myPeerConnection.setLocalDescription(offer)
-  console.log("sent the offer");
   socket.emit('offer', offer, roomName);
 })
 
+socket.on('cant_join', (roomName, roomSize) => {
+  console.log(roomName, roomSize);
+  welcome.hidden = false;
+  call.hidden = true;
+  const h4 = welcome.querySelector('h4');
+  h4.innerText = 'fulled';
+})
+
 socket.on('offer', async (offer) => {
+  myPeerConnection.addEventListener('datachannel', event => {
+    myDataChannel = event.channel;
+    myDataChannel.addEventListener('message', handleChannel);
+  });
   console.log('received the offer');
   myPeerConnection.setRemoteDescription(offer);
   const answer = await myPeerConnection.createAnswer();
   myPeerConnection.setLocalDescription(answer);
   socket.emit('answer', answer, roomName);
-  console.log('sent the answer');
 })
 
 socket.on('answer', answer => {
-  console.log('received the answer');
   myPeerConnection.setRemoteDescription(answer)
 })
 
 socket.on('ice', ice => {
-  console.log('received candidate');
   myPeerConnection.addIceCandidate(ice);
 })
+
 // RTC Code
 function makeConnection() {
   myPeerConnection = new RTCPeerConnection({
@@ -174,4 +201,12 @@ function handleIce(data) {
 function handleAddStream(data) {
   const peerFace = document.getElementById('peerFace');
   peerFace.srcObject = data.stream;
+}
+
+function handleChannel(event) {
+  console.log(event.data)
+  const ul = document.getElementById('myChannel')
+  const li = document.createElement("li");
+  li.innerText = `user: ${event.data}`;
+  ul.appendChild(li);
 }
